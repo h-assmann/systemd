@@ -85,11 +85,14 @@ static int watchdog_ping_now(void) {
 
 static int update_timeout(void) {
         int r;
+        usec_t previous_timeout;
 
         assert(watchdog_timeout > 0);
 
         if (watchdog_fd < 0)
                 return 0;
+
+        previous_timeout = watchdog_timeout;
 
         if (watchdog_timeout != USEC_INFINITY) {
                 r = watchdog_set_timeout();
@@ -105,8 +108,12 @@ static int update_timeout(void) {
 
         if (watchdog_timeout == USEC_INFINITY) {
                 r = watchdog_get_timeout();
-                if (r < 0)
-                        return log_error_errno(r, "Failed to query watchdog HW timeout: %m");
+                if (r < 0) {
+                        if (!ERRNO_IS_NOT_SUPPORTED(r))
+                                return log_error_errno(r, "Failed to query watchdog HW timeout: %m");
+                        log_info("Reading watchdog timeout is not supported, reusing the configured timeout.");
+                        watchdog_timeout = previous_timeout;
+                }
         }
 
         r = watchdog_set_enable(true);
